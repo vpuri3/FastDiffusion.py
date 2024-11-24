@@ -18,16 +18,14 @@ import fastdiff
 DATADIR = 'data/'
 
 #======================================================================#
-def main(dataset, device, out_dir, res_dir, train=True):
+def main(dataset, device, out_dir, res_dir, image_size, train=True):
     DISTRIBUTED = mlutils.is_torchrun()
     LOCAL_RANK = int(os.environ['LOCAL_RANK']) if DISTRIBUTED else 0
 
-    out_name = os.path.join(out_dir, "flow_matching")
-    res_name = os.path.join(res_dir, "flow_matching")
+    case_name = 'flow_matching'
+    out_name = os.path.join(out_dir, case_name)
+    res_name = os.path.join(res_dir, case_name)
     model_file  = out_name + ".pth"
-
-    vis_dir = os.path.join(res_dir, 'gnn_timeseries')
-    os.makedirs(vis_dir, exist_ok=True)
 
     #=================#
     # DATA:
@@ -37,7 +35,8 @@ def main(dataset, device, out_dir, res_dir, train=True):
     #=================#
     # MODEL
     #=================#
-    model = fastdiff.unet()
+    # model = fastdiff.unet()
+    model = fastdiff.DiT_S_2(input_size=image_size, in_channels=3,)
 
     #=================#
     # TRAIN
@@ -125,7 +124,7 @@ if __name__ == "__main__":
             os.mkdir(res_dir)
 
     #===============#
-    main(dataset, device, out_dir, res_dir, train=True)
+    main(dataset, device, out_dir, res_dir, args.image_size, train=True)
 
     #===============#
     if DISTRIBUTED:

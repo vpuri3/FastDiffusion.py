@@ -93,7 +93,7 @@ class Trainer:
         model.to(device)
 
         if self.DDP:
-            model = nn.parallel.DistributedDataParallel(model, device_ids=[device])
+            model = nn.parallel.DistributedDataParallel(model, device_ids=[device], find_unused_parameters=True)
 
         ###
         # OPTIMIZER
@@ -333,7 +333,7 @@ class Trainer:
                     f"LR {self.schedule.get_last_lr()[0]:.2e} " +
                     f"LOSS {loss.item():.8e}"
                 )
-        #
+
         return
 
     def batch_loss(self, batch):

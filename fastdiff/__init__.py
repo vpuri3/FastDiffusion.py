@@ -1,4 +1,7 @@
 from .utils import *
-from .models import *
 from .dataset import *
 from .visualize import *
+
+# models
+from .dit import *
+from .models import *
