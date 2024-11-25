@@ -44,10 +44,12 @@ def main(dataset, device, args):
     #=================#
     # MODEL
     #=================#
+    model = fastdiff.unet()
+    weight_decay = 1e-2
 
-    # model = fastdiff.unet()
+    # weight_decay = 0e-0
     # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
-    model = fastdiff.DiT_B_2(input_size=args.image_size, in_channels=3,)
+    # model = fastdiff.DiT_B_2(input_size=args.image_size, in_channels=3,)
 
     #=================#
     # TRAIN
@@ -65,10 +67,10 @@ def main(dataset, device, args):
 
     if args.train:
         kw = dict(
-            Opt='Adam', lr=1e-4, nepochs=100, weight_decay=0e-5,
-            _batch_size=16, _batch_size_=500,
+            Opt='Adam', lr=1e-4, nepochs=100, weight_decay=weight_decay,
+            _batch_size=16, _batch_size_=200, static_graph=True,
             batch_lossfun=batch_lossfun,
-            device=device, stats_every=args.save_every,
+            device=device, stats_every=100,
         )
 
         trainer = mlutils.Trainer(model, dataset, **kw)
@@ -106,7 +108,7 @@ if __name__ == "__main__":
     # dataset
     parser.add_argument('--dataset', default='AFHQ', help='dataset', type=str)
     parser.add_argument('--data_class', default='cat', help='data class', type=str)
-    parser.add_argument('--image_size', default=32, help='dataset', type=int)
+    parser.add_argument('--image_size', default=64, help='dataset', type=int)
 
     # parser.add_argument('--fid_final', default=True, help='compute_fid', type=bool)
     parser.add_argument('--train', default=True, help='train or eval', type=bool)

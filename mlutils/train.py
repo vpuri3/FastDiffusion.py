@@ -3,7 +3,6 @@
 import torch
 from torch import nn, optim
 from torch import distributed as dist
-# import torch_geometric as pyg
 
 from tqdm import tqdm
 
@@ -31,6 +30,7 @@ class Trainer:
 
         GNN=False,
         device=None,
+        static_graph=None,
 
         collate_fn=None,
         _batch_size=None,
@@ -93,7 +93,11 @@ class Trainer:
         model.to(device)
 
         if self.DDP:
-            model = nn.parallel.DistributedDataParallel(model, device_ids=[device], find_unused_parameters=True)
+            kw = dict(device_ids=[device])
+            # kw['find_unused_parameters'] = True
+            if static_graph is not None:
+                kw['static_graph'] = static_graph
+            model = nn.parallel.DistributedDataParallel(model, **kw)
 
         ###
         # OPTIMIZER
@@ -229,8 +233,8 @@ class Trainer:
 
     def make_dataloader(self):
         if self.GNN:
-            pass
-            # DL = pyg.loader.DataLoader
+            import torch_geometric as pyg
+            DL = pyg.loader.DataLoader
         else:
             DL = torch.utils.data.DataLoader
 
@@ -263,7 +267,7 @@ class Trainer:
         ###
         # Printing
         ###
-        if self.verbose and self.print_config and self.LOCAL_RANK == 0:
+        if self.verbose and self.LOCAL_RANK == 0:
             print(f"Number of training samples: {len(self._data)}")
             if self.data_ is not None:
                 print(f"Number of test samples: {len(self.data_)}")
@@ -274,9 +278,12 @@ class Trainer:
                 for batch in self._loader:
                     print(batch)
                     break
-                for batch in self.loader_:
-                    print(batch)
-                    break
+                if self.data_ is not None:
+                    for batch in self.loader_:
+                        print(batch)
+                        break
+            elif self.batch_lossfun is not None:
+                pass
             else:
                 for (x, y) in self._loader:
                     print(f"Shape of x: {x.shape} {x.dtype}")

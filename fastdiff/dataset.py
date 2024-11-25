@@ -13,7 +13,7 @@ __all__ = [
 #======================================================================#
 class AFHQDataset(torch.utils.data.Dataset):
     def __init__(
-        self, root, image_size, data_class, augment=False, exts=["jpg", "jpeg", "png"]
+        self, root, image_size, data_class, exts=["jpg", "jpeg", "png"]
     ):
         super().__init__()
         self.root = root
@@ -24,30 +24,16 @@ class AFHQDataset(torch.utils.data.Dataset):
             ]
         else:
             self.paths = [
-                p
-                for ext in exts
+                p for ext in exts
                 for p in Path(f"{root}/{data_class}").glob(f"*.{ext}")
             ]
 
-        if augment:
-            self.transform = transforms.Compose(
-                [
-                    transforms.Resize((int(image_size * 1.12), int(image_size * 1.12))),
-                    transforms.RandomCrop(image_size),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.ToTensor(),
-                    transforms.Lambda(lambda t: (t * 2) - 1),
-                ]
-            )
-        else:
-            self.transform = transforms.Compose(
-                [
-                    transforms.Resize((int(image_size * 1.12), int(image_size * 1.12))),
-                    transforms.CenterCrop(image_size),
-                    transforms.ToTensor(),
-                    transforms.Lambda(lambda t: (t * 2) - 1),
-                ]
-            )
+        self.transform = transforms.Compose([
+            transforms.Resize((int(image_size * 1.12), int(image_size * 1.12))),
+            transforms.CenterCrop(image_size),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda t: (t * 2) - 1),
+        ])
 
     def __len__(self):
         return len(self.paths)
