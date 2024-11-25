@@ -1,6 +1,7 @@
 #
 import torch
-import numpy as np
+import torchvision
+from cleanfid import fid
 
 import os
 import shutil
@@ -13,42 +14,73 @@ __all__ = [
 
 #======================================================================#
 class Visualizer:
-    def __init__(self, ):
+    def __init__(self, sample_fun, out_dir, image_size, sample_every, data_root=None, fid=False):
+
+        self.sample_fun = sample_fun
+        self.sample_steps = 8
+
+        self.out_dir = out_dir
+        self.image_size = image_size
+        self.sample_every = sample_every
+
+        self.fid = fid
+        self.data_root = data_root
+
         return
-    def visualize(self, trainer: mlutils.Trainer):
-        """
-        Use trained model to visualize forward and backward diffusion process
 
-        1. Sample the first batch of images from the dataloader
-        2. Visualize the forward diffusion process at 0%, 25%, 50%, 75%, 99% of the total timesteps
-        3. Use the last image from the forward diffusion process to visualize the backward diffusion
-            process at 0%, 25%, 50%, 75%, 99% of the total timesteps
-            you can use (percent * self.model.num_timesteps) to get the timesteps
-        4. Save the images in wandb
-        """
+    def save_dir(self, trainer):
+        nsave = trainer.epoch // self.sample_every
+        save_dir = os.path.join(self.out_dir, f'sample{str(nsave).zfill(2)}')
+        return nsave, save_dir
+
+    def sample(self, trainer):
+        nsave, save_dir = self.save_dir(trainer)
+
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        shape = (64, 3, self.image_size, self.image_size)
+        x0 = torch.randn(shape, device=trainer.device)
+
+        for s in range(self.sample_steps):
+            N = 2 ** s
+            x1 = self.sample_fun(trainer.model, x0, N) * 0.5 + 0.5
+            grid = torchvision.utils.make_grid(x1)
+
+            grid_path = os.path.join(save_dir, f"steps{str(N).zfill(3)}.png")
+            torchvision.utils.save_image(grid, grid_path, nrow=8)
+
+        return
+
+    def compute_fid(self, trainer):
+        val_dir = os.path.join(self.data_root, 'test') # 'val'
+
+        if not os.path.exists(val_dir):
+            os.makedirs(val_dir)
+
+        nsave, save_dir = self.save_dir(trainer)
+        fid_score = fid.compute_fid(save_dir, val_dir)
+        print(f'fid score: {fid_score}')
+
+        return
+
+    @torch.no_grad()
+    def __call__(self, trainer: mlutils.Trainer):
         trainer.model.eval()
-        trainer.model.to(trainer.device)
 
-        data_1 = next(self.dl)
-        data_2 = torch.randn_like(data_1)
+        if ((trainer.epoch + 1) % trainer.stats_every) != 0:
+            return
 
-        data_1, data_2 = data_1.to(self.device), data_2.to(self.device)
+        _, save_dir = self.save_dir(trainer)
 
-        percent = [0.0, 0.25, 0.50, 0.75, 0.99]
-        t_visualize = [int(i * self.model.num_timesteps) for i in percent]
+        trainer.save(os.path.join(save_dir, 'model.pt'))
 
-        # visualize backward diffusion process
-        img_backward = []
-        for t in range(self.model.num_timesteps - 1, -1, -1):
-            img = self.model.p_sample(
-                img,
-                torch.full((img.shape[0],), t, device=img.device, dtype=torch.long),
-                t,
-            )
-            if t in t_visualize:
-                img_vis = torch.clamp(img, -1, 1)
-                img_vis = (img_vis + 1) / 2
-                img_backward.append(img_vis)
+        self.sample(trainer)
+
+        if self.fid:
+            self.compute_fid(trainer)
+
+        return
 
 #======================================================================#
 #
