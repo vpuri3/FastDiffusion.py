@@ -31,6 +31,7 @@ class Trainer:
         GNN=False,
         device=None,
         static_graph=None,
+        drop_last=False,
 
         collate_fn=None,
         _batch_size=None,
@@ -162,6 +163,7 @@ class Trainer:
 
         # MISC
         self.GNN = GNN
+        self.drop_last = drop_last
 
         # DATA
         self._data = _data
@@ -252,7 +254,7 @@ class Trainer:
             _shuffle, __shuffle, shuffle_ = True, False, False
             _sampler, __sampler, sampler_ = None, None , None
 
-        _args  = dict(shuffle= _shuffle, sampler= _sampler)
+        _args  = dict(shuffle= _shuffle, sampler= _sampler, drop_last=self.drop_last)
         __args = dict(shuffle=__shuffle, sampler=__sampler)
         args_  = dict(shuffle=shuffle_ , sampler=sampler_ )
 

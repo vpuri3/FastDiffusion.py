@@ -87,6 +87,9 @@ class Diffusion(nn.Module):
         vt_11 = self.model(xt + dd.view(-1,1,1,1) * vt_01, tt + dd, dd)
         v_avg = 0.5 * (vt_01 + vt_11)
 
+        mask = ((tt + dd) > 1.0) * ((tt + 2 * dd) > 1.0)
+        mask = mask.view(-1,1,1,1)
+
         return self.lossfun(vt_02, v_avg.detach())
 
     def loss_FM(self, x1, use_d: bool):

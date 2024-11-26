@@ -38,16 +38,22 @@ def main(dataset, device, args):
     # UNET (batch_size = 16 * 3)
     ###
 
-    # weight_decay = 1e-2
-    # model = fastdiff.unet()
+    if args.mode == 0:
+        lr = 1e-3
+        weight_decay = 0e-0
+        model = fastdiff.UNet(32)
+    else:
+        lr = 1e-4
+        weight_decay = 1e-2
+        model = fastdiff.UNet(32)
 
     ###
     # DIT
     ###
 
-    weight_decay = 1e-1 # 1e-1 - 1e-2
-    model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
-    # model = fastdiff.DiT_B_2(input_size=args.image_size, in_channels=3,)
+    # lr = 1e-4
+    # weight_decay = 1e-1 # 1e-1 - 1e-2
+    # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
 
     #=================#
     model = fastdiff.Diffusion(model, args.mode)
@@ -72,10 +78,9 @@ def main(dataset, device, args):
             return trainer.model(batch)
 
         kw = dict(
-            Opt='Adam', lr=1e-4, nepochs=100, weight_decay=weight_decay,
-            _batch_size=8, static_graph=True,
-            batch_lossfun=batch_lossfun,
-            device=device, stats_every=-1,
+            Opt='Adam', lr=lr, nepochs=50, weight_decay=weight_decay,
+            _batch_size=8, static_graph=True, drop_last=True,
+            batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
 
         trainer = mlutils.Trainer(model, dataset, **kw)

@@ -4,4 +4,5 @@ from .callback import *
 
 # models
 from .dit import *
+from .unet import *
 from .models import *
