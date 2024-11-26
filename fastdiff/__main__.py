@@ -53,7 +53,12 @@ def main(dataset, device, args):
 
     # lr = 1e-4
     # weight_decay = 1e-1 # 1e-1 - 1e-2
-    # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
+    # model = fastdiff.DiT(input_size=args.image_size,
+    #     in_channels=3, patch_size=2, hidden_size=96, num_heads=6,
+    #     mlp_ratio=2.0,
+    # )
+    #
+    # # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
 
     #=================#
     model = fastdiff.Diffusion(model, args.mode)
@@ -78,8 +83,8 @@ def main(dataset, device, args):
             return trainer.model(batch)
 
         kw = dict(
-            Opt='Adam', lr=lr, nepochs=50, weight_decay=weight_decay,
-            _batch_size=8, static_graph=True, drop_last=True,
+            Opt='Adam', lr=lr, nepochs=100, weight_decay=weight_decay,
+            _batch_size=12, static_graph=True, drop_last=True,
             batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
 
@@ -95,13 +100,14 @@ def main(dataset, device, args):
     #=================#
 
     if LOCAL_RANK == 0:
-        model.eval()
-        model_state = torch.load(model_file, weights_only=True, map_location='cpu')
-        model.load_state_dict(model_state)
-        model.to(device)
+        # model.eval()
+        # model_state = torch.load(model_file, weights_only=True, map_location='cpu')
+        # model.load_state_dict(model_state)
+        # model.to(device)
 
-        # trainer = mlutils.Trainer(model, dataset)
-        # callback(trainer)
+        trainer = mlutils.Trainer(model, dataset)
+        callback.load(trainer)
+        callback(trainer, final=True)
 
     return
 
@@ -120,8 +126,8 @@ if __name__ == "__main__":
     parser.add_argument('--data_class', default='cat', help='data class', type=str)
     parser.add_argument('--image_size', default=64, help='dataset', type=int)
 
-    # parser.add_argument('--fid_final', default=True, help='compute_fid', type=bool)
-    parser.add_argument('--train', default=True, help='train or eval', type=bool)
+    parser.add_argument('--train', action="store_true", help='train or eval')
+
     parser.add_argument('--case_dir', default='test', help='case_dir', type=str)
     parser.add_argument('--mode', default=0, help='FM (0) or SM (1)', type=int)
     parser.add_argument('--save_every', default=5, help='epochs', type=int)

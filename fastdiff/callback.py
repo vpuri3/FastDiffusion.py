@@ -27,14 +27,24 @@ class Callback:
 
         return
 
-    def save_dir(self, trainer):
-        nsave = trainer.epoch // self.save_every
-        save_dir = os.path.join(self.out_dir, f'sample{str(nsave).zfill(2)}')
-        return nsave, save_dir
+    def load(self, trainer):
+        load_dir = sorted(os.listdir(self.out_dir))[-1]
+        model_file = os.path.join(self.out_dir, load_dir, 'model.pt')
 
-    def sample(self, trainer):
-        nsave, save_dir = self.save_dir(trainer)
+        snapshot = torch.load(model_file, weights_only=False, map_location='cpu')
+        trainer.model.load_state_dict(snapshot['model_state']).to(trainer.device)
 
+        return
+
+    def save_dir(self, trainer, final=False):
+        if not final:
+            nsave = trainer.epoch // self.save_every
+            save_dir = os.path.join(self.out_dir, f'sample{str(nsave).zfill(2)}')
+        else:
+            save_dir = os.path.join(self.out_dir, f'sample')
+        return save_dir
+
+    def sample(self, trainer, save_dir):
         shape = (64, 3, self.image_size, self.image_size)
         x0 = torch.randn(shape, device=trainer.device)
 
@@ -54,33 +64,34 @@ class Callback:
 
         return
 
+    @torch.no_grad()
+    def __call__(self, trainer: mlutils.Trainer, final=False):
+        trainer.model.eval()
+
+        if not final:
+            if (trainer.epoch % self.save_every) != 0:
+                return
+
+        save_dir = self.save_dir(trainer, final=final)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        trainer.save(os.path.join(save_dir, 'model.pt'))
+        self.sample(trainer, save_dir)
+
+        # if self.fid:
+        #     self.compute_fid(trainer)
+
+        return
+
     def compute_fid(self, trainer):
         val_dir = os.path.join(self.data_root, 'test') # 'val'
         if not os.path.exists(val_dir):
             os.makedirs(val_dir)
 
-        nsave, save_dir = self.save_dir(trainer)
+        save_dir = self.save_dir(trainer)
         fid_score = fid.compute_fid(save_dir, val_dir)
         print(f'fid score: {fid_score}')
-
-        return
-
-    @torch.no_grad()
-    def __call__(self, trainer: mlutils.Trainer):
-        trainer.model.eval()
-
-        if (trainer.epoch % self.save_every) != 0:
-            return
-
-        _, save_dir = self.save_dir(trainer)
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-
-        trainer.save(os.path.join(save_dir, 'model.pt'))
-        self.sample(trainer)
-
-        if self.fid:
-            self.compute_fid(trainer)
 
         return
 
