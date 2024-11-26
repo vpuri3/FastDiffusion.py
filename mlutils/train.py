@@ -293,7 +293,8 @@ class Trainer:
 
     def train(self):
         self.make_dataloader()
-        self.statistics()
+        if self.stats_every > 0:
+            self.statistics()
 
         while self.epoch < self.nepochs:
             self.epoch += 1
@@ -302,8 +303,9 @@ class Trainer:
             self.train_epoch()
             self.trigger_callbacks("epoch_end")
 
-            if (self.epoch % self.stats_every) == 0:
-                self.statistics()
+            if self.stats_every > 0:
+                if (self.epoch % self.stats_every) == 0:
+                    self.statistics()
 
         return
 

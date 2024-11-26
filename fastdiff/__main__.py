@@ -31,50 +31,55 @@ def main(dataset, device, args):
             os.mkdir(out_dir)
 
     #=================#
-    # DIFFUSION TYPE
-    #=================#
-
-    if args.case_type == 0: # flow matching
-        sample_fun = fastdiff.sample_flow_matching
-        batch_lossfun = fastdiff.loss_flow_matching
-    else: # shortcut
-        sample_fun = fastdiff.sample_shortcut
-        batch_lossfun = fastdiff.loss_shortcut
-
-    #=================#
     # MODEL
     #=================#
-    model = fastdiff.unet()
-    weight_decay = 1e-2
 
-    # weight_decay = 0e-0
-    # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
+    ###
+    # UNET (batch_size = 16 * 3)
+    ###
+
+    # weight_decay = 1e-2
+    # model = fastdiff.unet()
+
+    ###
+    # DIT
+    ###
+
+    weight_decay = 1e-1 # 1e-1 - 1e-2
+    model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
     # model = fastdiff.DiT_B_2(input_size=args.image_size, in_channels=3,)
+
+    #=================#
+    model = fastdiff.Diffusion(model, args.mode)
+    #=================#
 
     #=================#
     # TRAIN
     #=================#
 
-    visualizer = fastdiff.Visualizer(
-        sample_fun, out_dir, args.image_size,
+    callback = fastdiff.Callback(
+        out_dir, args.image_size,
         args.save_every, dataset.root, fid=False
     )
 
-    def callback(trainer: mlutils.Trainer):
+    def callback_fn(trainer: mlutils.Trainer):
         if LOCAL_RANK == 0:
-            visualizer(trainer)
+            callback(trainer)
         return
 
     if args.train:
+        def batch_lossfun(batch, trainer: mlutils.Trainer):
+            return trainer.model(batch)
+
         kw = dict(
             Opt='Adam', lr=1e-4, nepochs=100, weight_decay=weight_decay,
-            _batch_size=16, _batch_size_=200, static_graph=True,
+            _batch_size=8, static_graph=True,
             batch_lossfun=batch_lossfun,
-            device=device, stats_every=100,
+            device=device, stats_every=-1,
         )
 
         trainer = mlutils.Trainer(model, dataset, **kw)
-        trainer.add_callback('epoch_end', callback)
+        trainer.add_callback('epoch_end', callback_fn)
         trainer.train()
 
         if LOCAL_RANK==0:
@@ -91,7 +96,7 @@ def main(dataset, device, args):
         model.to(device)
 
         # trainer = mlutils.Trainer(model, dataset)
-        # visualizer(trainer)
+        # callback(trainer)
 
     return
 
@@ -113,7 +118,7 @@ if __name__ == "__main__":
     # parser.add_argument('--fid_final', default=True, help='compute_fid', type=bool)
     parser.add_argument('--train', default=True, help='train or eval', type=bool)
     parser.add_argument('--case_dir', default='test', help='case_dir', type=str)
-    parser.add_argument('--case_type', default=0, help='FM or SM', type=int)
+    parser.add_argument('--mode', default=0, help='FM (0) or SM (1)', type=int)
     parser.add_argument('--save_every', default=5, help='epochs', type=int)
 
     args = parser.parse_args()

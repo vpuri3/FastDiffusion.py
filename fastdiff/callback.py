@@ -9,15 +9,14 @@ import shutil
 import mlutils
 
 __all__ = [
-    'Visualizer',
+    'Callback',
 ]
 
 #======================================================================#
-class Visualizer:
-    def __init__(self, sample_fun, out_dir, image_size, save_every, data_root=None, fid=False):
+class Callback:
+    def __init__(self, out_dir, image_size, save_every, data_root=None, fid=False):
 
-        self.sample_fun = sample_fun
-        self.sample_steps = 8
+        self.log_max_steps = 8
 
         self.out_dir = out_dir
         self.image_size = image_size
@@ -39,9 +38,15 @@ class Visualizer:
         shape = (64, 3, self.image_size, self.image_size)
         x0 = torch.randn(shape, device=trainer.device)
 
-        for s in range(self.sample_steps):
+        if isinstance(trainer.model, torch.nn.parallel.DistributedDataParallel):
+            sample_fun = trainer.model.module.sample
+        else:
+            sample_fun = trainer.model.sample
+
+        for s in range(self.log_max_steps):
             N = 2 ** s
-            x1 = self.sample_fun(trainer.model, x0, N) * 0.5 + 0.5
+            # x1 = sample_fun(trainer.model, x0, N) * 0.5 + 0.5
+            x1 = sample_fun(x0, N) * 0.5 + 0.5
             grid = torchvision.utils.make_grid(x1)
 
             grid_path = os.path.join(save_dir, f"steps{str(N).zfill(4)}.png")
@@ -50,9 +55,6 @@ class Visualizer:
         return
 
     def compute_fid(self, trainer):
-        if not self.fid:
-            return
-
         val_dir = os.path.join(self.data_root, 'test') # 'val'
         if not os.path.exists(val_dir):
             os.makedirs(val_dir)
@@ -76,7 +78,9 @@ class Visualizer:
 
         trainer.save(os.path.join(save_dir, 'model.pt'))
         self.sample(trainer)
-        self.compute_fid(trainer)
+
+        if self.fid:
+            self.compute_fid(trainer)
 
         return
 
