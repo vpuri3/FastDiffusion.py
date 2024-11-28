@@ -38,13 +38,14 @@ def main(dataset, device, args):
     # UNET (batch_size = 16 * 3)
     ###
 
+    batch_size = 12
     if args.mode == 0:
         lr = 1e-3
         weight_decay = 0e-0
         model = fastdiff.UNet(32)
     else:
         lr = 1e-4
-        weight_decay = 0e-1
+        weight_decay = 1e-1
         model = fastdiff.UNet(32)
 
     ###
@@ -53,6 +54,7 @@ def main(dataset, device, args):
 
     # lr = 1e-4
     # weight_decay = 1e-1 # 1e-1 - 1e-2
+    # batch_size = 8
     # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
 
     #=================#
@@ -78,8 +80,8 @@ def main(dataset, device, args):
             return trainer.model(batch)
 
         kw = dict(
-            Opt='Adam', lr=lr, nepochs=100, weight_decay=weight_decay,
-            _batch_size=12, static_graph=True, drop_last=True,
+            Opt='AdamW', lr=lr, nepochs=200, weight_decay=weight_decay,
+            _batch_size=batch_size, static_graph=True, drop_last=True,
             batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
 
