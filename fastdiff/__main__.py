@@ -80,7 +80,7 @@ def main(dataset, device, args):
             return trainer.model(batch)
 
         kw = dict(
-            Opt='AdamW', lr=lr, nepochs=200, weight_decay=weight_decay,
+            Opt='AdamW', lr=lr, nepochs=100, weight_decay=weight_decay,
             _batch_size=batch_size, static_graph=True, drop_last=True,
             batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
