@@ -19,3 +19,5 @@ multi-gpu training
 $ torchrun --nproc-per-gpu gpu -m fastdiff --case_dir unet_sm_test --mode 1 --train # Shortcut model
 $ torchrun --nproc-per-gpu gpu -m fastdiff --case_dir unet_fm_test --mode 0 --train # flow matching
 ```
+
+ensure total batch size `(batch_size_per_gpu * num_gpus) ~ 32` and `batch_size_per_gpu` is a multiple of `4`.
