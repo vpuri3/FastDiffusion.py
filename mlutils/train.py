@@ -236,6 +236,7 @@ class Trainer:
     def make_dataloader(self):
         if self.GNN:
             import torch_geometric as pyg
+
             DL = pyg.loader.DataLoader
         else:
             DL = torch.utils.data.DataLoader
