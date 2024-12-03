@@ -2,10 +2,6 @@
 import torch
 from torch import nn
 
-import torch_scatter
-import torch_geometric as pyg
-from torch_geometric.nn import MessagePassing
-
 import math
 
 __all__ = [
