@@ -57,8 +57,23 @@ def main(dataset, device, args):
     # batch_size = 8
     # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
 
+    ###
+    # SCHEDULE
+    ###
+    
+    if args.schedule_type == 'laplace':
+        schedule_params = {'mu': args.mu, 'b': args.b}
+    elif args.schedule_type == 'cauchy':
+        schedule_params = {'mu': args.mu, 'gamma': args.gamma}
+    elif args.schedule_type == 'cosine_shifted':
+        schedule_params = {'mu': args.mu}
+    elif args.schedule_type == 'cosine_scaled':
+        schedule_params = {'s': args.s}
+    else:
+        schedule_params = {}
+
     #=================#
-    model = fastdiff.Diffusion(model, args.mode)
+    model = fastdiff.Diffusion(model, args.mode, args.schedule_type, **schedule_params)
     #=================#
 
     #=================#
@@ -67,7 +82,7 @@ def main(dataset, device, args):
 
     callback = fastdiff.Callback(
         out_dir, args.image_size,
-        args.save_every, dataset.root, fid=False
+        args.save_every, args.schedule_type, dataset.root, fid=False
     )
 
     def callback_fn(trainer: mlutils.Trainer):
@@ -89,17 +104,14 @@ def main(dataset, device, args):
         trainer.add_callback('epoch_end', callback_fn)
         trainer.train()
 
-        # if LOCAL_RANK==0:
-        #     torch.save(model.to("cpu").state_dict(), model_file)
-
     #=================#
     # final evaluation
     #=================#
 
     if LOCAL_RANK == 0:
-        # trainer = mlutils.Trainer(model, dataset, device=device)
-        # callback.load(trainer)
-        # callback(trainer, final=True)
+        trainer = mlutils.Trainer(model, dataset, device=device)
+        callback.load(trainer)
+        callback(trainer, final=True)
         pass
 
     return
@@ -121,6 +133,13 @@ if __name__ == "__main__":
     parser.add_argument('--case_dir', default='test', help='case_dir', type=str)
     parser.add_argument('--mode', default=0, help='FM (0) or SM (1)', type=int)
     parser.add_argument('--save_every', default=10, help='epochs', type=int)
+    # new
+    parser.add_argument('--schedule_type', default='default', type=str, 
+                        choices=['default','cosine', 'laplace', 'cauchy', 'cosine_shifted', 'cosine_scaled', 'exponential', 'quadratic'])
+    parser.add_argument('--mu', default=0, type=float)
+    parser.add_argument('--b', default=0.5, type=float)
+    parser.add_argument('--gamma', default=1, type=float)
+    parser.add_argument('--s', default=1, type=float)
 
     args = parser.parse_args()
 

@@ -14,7 +14,7 @@ __all__ = [
 
 #======================================================================#
 class Callback:
-    def __init__(self, out_dir, image_size, save_every, data_root=None, fid=False):
+    def __init__(self, out_dir, image_size, save_every, schedule_type, data_root=None, fid=False):
 
         self.log_max_steps = 8
 
@@ -24,24 +24,26 @@ class Callback:
 
         self.fid = fid
         self.data_root = data_root
+        self.schedule_type = schedule_type
 
         return
 
     def load(self, trainer):
         load_dir = sorted(os.listdir(self.out_dir))[-1]
         model_file = os.path.join(self.out_dir, load_dir, 'model.pt')
-
+        if trainer.LOCAL_RANK == 0:
+            print("loading", model_file)
         snapshot = torch.load(model_file, weights_only=False, map_location='cpu')
-        trainer.model.load_state_dict(snapshot['model_state']).to(trainer.device)
-
+        trainer.model.load_state_dict(snapshot['model_state'])
+        trainer.model.to(trainer.device)
         return
 
-    def save_dir(self, trainer, final=False):
+    def save_dir(self, trainer, schedule_type, final=False):
         if not final:
             nsave = trainer.epoch // self.save_every
             save_dir = os.path.join(self.out_dir, f'sample{str(nsave).zfill(2)}')
         else:
-            save_dir = os.path.join(self.out_dir, f'sample')
+            save_dir = os.path.join(self.out_dir, f'sample_'+schedule_type)
         return save_dir
 
     def sample(self, trainer, save_dir):
@@ -55,7 +57,6 @@ class Callback:
 
         for s in range(self.log_max_steps):
             N = 2 ** s
-            # x1 = sample_fun(trainer.model, x0, N) * 0.5 + 0.5
             x1 = sample_fun(x0, N) * 0.5 + 0.5
             grid = torchvision.utils.make_grid(x1)
 
@@ -72,7 +73,8 @@ class Callback:
             if (trainer.epoch % self.save_every) != 0:
                 return
 
-        save_dir = self.save_dir(trainer, final=final)
+        save_dir = self.save_dir(trainer, self.schedule_type, final=final)
+        print("saving to",save_dir)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
@@ -85,11 +87,11 @@ class Callback:
         return
 
     def compute_fid(self, trainer):
-        val_dir = os.path.join(self.data_root, 'test') # 'val'
+        val_dir = os.path.join(self.data_root, 'test')
         if not os.path.exists(val_dir):
             os.makedirs(val_dir)
 
-        save_dir = self.save_dir(trainer)
+        save_dir = self.save_dir(trainer, self.schedule_type)
         fid_score = fid.compute_fid(save_dir, val_dir)
         print(f'fid score: {fid_score}')
 

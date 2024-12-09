@@ -2,6 +2,8 @@
 import torch
 from torch import nn
 import mlutils
+import math
+import numpy as np
 
 __all__ = [
     'Diffusion',
@@ -18,7 +20,7 @@ __all__ = [
 # x1: sample ~ data distribution
 
 class Diffusion(nn.Module):
-    def __init__(self, model, mode: int):
+    def __init__(self, model, mode: int, schedule_type='default', **schedule_params):
         super().__init__()
 
         msg = "mode must be 0 for Flow Matching (FM) or 1 Shortcut Model (SM)"
@@ -26,11 +28,52 @@ class Diffusion(nn.Module):
 
         self.mode = mode
         self.model = model
+        self.schedule_type = schedule_type
+        self.schedule_params = schedule_params
         self.lossfun = nn.MSELoss()
         self.log_max_steps = 8 # 2 ** N
 
     def noise_like(self, x):
         return torch.randn_like(x)
+    
+    schedule_types = ['cosine', 'laplace', 'cauchy', 'cosine_shifted', 'cosine_scaled', 'exponential', 'quadratic']
+    
+    def cosine_schedule(self,t):
+        return np.cos((1 - t) * math.pi / 2)
+    def exponential_schedule(self,t,beta=1.0):
+        return 1 - np.exp(-beta * t)
+    
+    def quadratic_schedule(self, t):
+        return t**2
+
+    def laplace_schedule(self, t, mu=0, b=0.5):
+#         return mu - b * np.sign(0.5 - t) * np.log(1 - 2 * np.abs(t - 0.5))
+        return mu - b * np.sign(0.5 - t) * np.log(np.maximum(1 - 2 * np.abs(t - 0.5), 1e-6))
+
+    def cauchy_schedule(self, t, mu=0, gamma=1):
+        return mu + gamma * np.tan(math.pi / 2 * (1 - 2 * t))
+
+    def cosine_shifted_schedule(self, t, mu=0):
+        return mu + 2 * np.log(np.tan(math.pi * t / 2))
+
+    def cosine_scaled_schedule(self, t, s=1):
+        return 2 / s * np.log(np.tan(math.pi * t / 2))
+
+    def get_schedule(self, t):
+        if self.schedule_type == 'cosine':
+            return self.cosine_schedule(t)
+        elif self.schedule_type == 'laplace':
+            return self.laplace_schedule(t, **self.schedule_params)
+        elif self.schedule_type == 'cauchy':
+            return self.cauchy_schedule(t, **self.schedule_params)
+        elif self.schedule_type == 'cosine_shifted':
+            return self.cosine_shifted_schedule(t, **self.schedule_params)
+        elif self.schedule_type == 'cosine_scaled':
+            return self.cosine_scaled_schedule(t, **self.schedule_params)
+        elif self.schedule_type == 'exponential':
+            return self.exponential_schedule(t)
+        elif self.schedule_type == 'quadratic':
+            return self.quadratic_schedule(t)
 
     @torch.no_grad()
     def sample(self, x0, N):
@@ -41,6 +84,7 @@ class Diffusion(nn.Module):
 
         for t in range(N):
             t  = t / N
+            t = self.get_schedule(t)
             tt = torch.full((x0.size(0),), t, device=x0.device)
 
             if self.mode == 0: # FM
@@ -51,8 +95,14 @@ class Diffusion(nn.Module):
             xt = xt + d * vt
 
         return xt
+    
+    def predict_velocity(self, xt, t, d):
+        if self.mode == 0:  # Flow Matching
+            return self.model(xt, t)
+        else:  # Shortcut Model
+            return self.model(xt, t, d)
 
-    def _sample(self, x1):
+    def _train_sample(self, x1):
         B = x1.size(0)
         device = x1.device
 
@@ -61,9 +111,9 @@ class Diffusion(nn.Module):
         dd = 1 / (2 ** torch.randint(self.log_max_steps, (B,), device=device))
 
         xt = x1 * tt.view(-1,1,1,1) + (1 - tt).view(-1,1,1,1) * x0
-
+     
         return x0, xt, tt, dd
-
+    
     #==================================#
     # losses
     #==================================#
@@ -78,7 +128,7 @@ class Diffusion(nn.Module):
         return loss_FM + loss_CM
 
     def loss_CM(self, x1):
-        x0, xt, tt, dd = self._sample(x1)
+        x0, xt, tt, dd = self._train_sample(x1)
 
         # vt_XY: v(t + X * d, Y * d)
 
@@ -93,14 +143,15 @@ class Diffusion(nn.Module):
         return self.lossfun(vt_02, v_avg.detach())
 
     def loss_FM(self, x1, use_d: bool):
-        x0, xt, tt, dd = self._sample(x1)
+        x0, xt, tt, dd = self._train_sample(x1)
 
         if use_d:
             vt = self.model(xt, tt, dd)
         else:
             vt = self.model(xt, tt)
-
-        return self.lossfun(vt, x1 - x0)
+        target_velocity = x1 - x0
+        
+        return self.lossfun(vt, target_velocity)
 
     #==================================#
 
