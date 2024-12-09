@@ -31,9 +31,9 @@ class Callback:
     def load(self, trainer):
         load_dir = sorted(os.listdir(self.out_dir))[-1]
         model_file = os.path.join(self.out_dir, load_dir, 'model.pt')
-        print("loading", model_file)
+        if trainer.LOCAL_RANK == 0:
+            print("loading", model_file)
         snapshot = torch.load(model_file, weights_only=False, map_location='cpu')
-#         trainer.model.load_state_dict(snapshot['model_state']).to(trainer.device)
         trainer.model.load_state_dict(snapshot['model_state'])
         trainer.model.to(trainer.device)
         return
@@ -57,7 +57,6 @@ class Callback:
 
         for s in range(self.log_max_steps):
             N = 2 ** s
-            # x1 = sample_fun(trainer.model, x0, N) * 0.5 + 0.5
             x1 = sample_fun(x0, N) * 0.5 + 0.5
             grid = torchvision.utils.make_grid(x1)
 
@@ -88,7 +87,7 @@ class Callback:
         return
 
     def compute_fid(self, trainer):
-        val_dir = os.path.join(self.data_root, 'test') # 'val'
+        val_dir = os.path.join(self.data_root, 'test')
         if not os.path.exists(val_dir):
             os.makedirs(val_dir)
 
