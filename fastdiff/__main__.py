@@ -56,12 +56,10 @@ def main(dataset, device, args):
     # weight_decay = 1e-1 # 1e-1 - 1e-2
     # batch_size = 8
     # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
-#     schedule_params = {
-#         'mu': args.mu,
-#         'b': args.b,
-#         'gamma': args.gamma,
-#         's': args.s
-#     }
+
+    ###
+    # SCHEDULE
+    ###
     
     if args.schedule_type == 'laplace':
         schedule_params = {'mu': args.mu, 'b': args.b}
@@ -73,6 +71,7 @@ def main(dataset, device, args):
         schedule_params = {'s': args.s}
     else:
         schedule_params = {}
+
     #=================#
     model = fastdiff.Diffusion(model, args.mode, args.schedule_type, **schedule_params)
     #=================#
@@ -104,9 +103,6 @@ def main(dataset, device, args):
         trainer = mlutils.Trainer(model, dataset, **kw)
         trainer.add_callback('epoch_end', callback_fn)
         trainer.train()
-
-        # if LOCAL_RANK==0:
-        #     torch.save(model.to("cpu").state_dict(), model_file)
 
     #=================#
     # final evaluation
@@ -180,12 +176,11 @@ if __name__ == "__main__":
         device = LOCAL_RANK
     else:
         device = mlutils.select_device()
-    print("on line 172")
-    print("local rank",LOCAL_RANK)
+
     #===============#
     main(dataset, device, args)
     #===============#
-    print("outside main")
+
     if DISTRIBUTED:
         mlutils.dist_finalize()
     #===============#
