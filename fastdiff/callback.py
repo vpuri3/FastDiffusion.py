@@ -47,21 +47,45 @@ class Callback:
         return save_dir
 
     def sample(self, trainer, save_dir):
-        shape = (64, 3, self.image_size, self.image_size)
-        x0 = torch.randn(shape, device=trainer.device)
+        num_images = 500
+        shape = (num_images, 3, self.image_size, self.image_size)
 
         if isinstance(trainer.model, torch.nn.parallel.DistributedDataParallel):
             sample_fun = trainer.model.module.sample
         else:
             sample_fun = trainer.model.sample
 
+        x0 = torch.randn(shape, device=trainer.device)
+        
         for s in range(self.log_max_steps):
-            N = 2 ** s
-            x1 = sample_fun(x0, N) * 0.5 + 0.5
-            grid = torchvision.utils.make_grid(x1)
+            N = 2 ** s 
+            x1 = sample_fun(x0, N) * 0.5 + 0.5 
 
-            grid_path = os.path.join(save_dir, f"steps{str(N).zfill(4)}.png")
-            torchvision.utils.save_image(grid, grid_path, nrow=8)
+            step_dir = os.path.join(save_dir, f"step{str(N).zfill(4)}")
+            os.makedirs(step_dir, exist_ok=True)
+
+            for i in range(num_images):
+                single_image_path = os.path.join(
+                    step_dir, f"img_{i:03d}.png"
+                )
+                torchvision.utils.save_image(x1[i], single_image_path)
+
+            print(f"Generated {num_images} images for step {N} in directory {step_dir}")
+        # shape = (64, 3, self.image_size, self.image_size)
+        # x0 = torch.randn(shape, device=trainer.device)
+
+        # if isinstance(trainer.model, torch.nn.parallel.DistributedDataParallel):
+        #     sample_fun = trainer.model.module.sample
+        # else:
+        #     sample_fun = trainer.model.sample
+
+        # for s in range(self.log_max_steps):
+        #     N = 2 ** s
+        #     x1 = sample_fun(x0, N) * 0.5 + 0.5
+        #     grid = torchvision.utils.make_grid(x1)
+
+        #     grid_path = os.path.join(save_dir, f"steps{str(N).zfill(4)}.png")
+        #     torchvision.utils.save_image(grid, grid_path, nrow=8)
 
         return
 
