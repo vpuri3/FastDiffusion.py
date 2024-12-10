@@ -20,7 +20,19 @@ __all__ = [
 # x1: sample ~ data distribution
 
 class Diffusion(nn.Module):
-    def __init__(self, model, mode: int, schedule_type='default', **schedule_params):
+
+    schedule_types = [
+        'default',
+        'cosine',
+        'laplace',
+        'cauchy',
+        # 'cosine_shifted',
+        # 'cosine_scaled',
+        'exponential',
+        'quadratic'
+    ]
+
+    def __init__(self, model, mode: int):
         super().__init__()
 
         msg = "mode must be 0 for Flow Matching (FM) or 1 Shortcut Model (SM)"
@@ -28,18 +40,15 @@ class Diffusion(nn.Module):
 
         self.mode = mode
         self.model = model
-        self.schedule_type = schedule_type
-        self.schedule_params = schedule_params
         self.lossfun = nn.MSELoss()
         self.log_max_steps = 8 # 2 ** N
 
     def noise_like(self, x):
         return torch.randn_like(x)
     
-    schedule_types = ['cosine', 'laplace', 'cauchy', 'cosine_shifted', 'cosine_scaled', 'exponential', 'quadratic']
-    
-    def cosine_schedule(self,t):
+    def cosine_schedule(self, t):
         return np.cos((1 - t) * math.pi / 2)
+
     def exponential_schedule(self,t,beta=1.0):
         return 1 - np.exp(-beta * t)
     
@@ -59,39 +68,35 @@ class Diffusion(nn.Module):
     def cosine_scaled_schedule(self, t, s=1):
         return 2 / s * np.log(np.tan(math.pi * t / 2))
 
-    def get_schedule(self, t):
-        if self.schedule_type == 'cosine':
+    def apply_schedule(self, t, schedule_type='default', **schedule_params):
+        if schedule_type == 'default':
+            return t
+        elif schedule_type == 'cosine':
             return self.cosine_schedule(t)
-        elif self.schedule_type == 'laplace':
-            return self.laplace_schedule(t, **self.schedule_params)
-        elif self.schedule_type == 'cauchy':
-            return self.cauchy_schedule(t, **self.schedule_params)
-        elif self.schedule_type == 'cosine_shifted':
-            return self.cosine_shifted_schedule(t, **self.schedule_params)
-        elif self.schedule_type == 'cosine_scaled':
-            return self.cosine_scaled_schedule(t, **self.schedule_params)
-        elif self.schedule_type == 'exponential':
+        elif schedule_type == 'laplace':
+            return self.laplace_schedule(t, **schedule_params)
+        elif schedule_type == 'cauchy':
+            return self.cauchy_schedule(t, **schedule_params)
+        elif schedule_type == 'cosine_shifted':
+            return self.cosine_shifted_schedule(t, **schedule_params)
+        elif schedule_type == 'cosine_scaled':
+            return self.cosine_scaled_schedule(t, **schedule_params)
+        elif schedule_type == 'exponential':
             return self.exponential_schedule(t)
-        elif self.schedule_type == 'quadratic':
+        elif schedule_type == 'quadratic':
             return self.quadratic_schedule(t)
 
     @torch.no_grad()
-    def sample(self, x0, N):
+    def sample(self, x0, N, schedule_type='default', **schedule_params):
         xt = x0
         d  = 1 / N
-        if self.mode == 1:
-            dd = torch.full((x0.size(0),), d, device=x0.device)
+        dd = torch.full((x0.size(0),), d, device=x0.device) if self.mode == 1 else None
 
         for t in range(N):
             t  = t / N
-            t = self.get_schedule(t)
+            t  = self.apply_schedule(t, schedule_type, **schedule_params)
             tt = torch.full((x0.size(0),), t, device=x0.device)
-
-            if self.mode == 0: # FM
-                vt = self.model(xt, tt)
-            else: # SM
-                vt = self.model(xt, tt, dd)
-
+            vt = self.predict_velocity(xt, tt, dd)
             xt = xt + d * vt
 
         return xt
@@ -160,6 +165,10 @@ class Diffusion(nn.Module):
             return self.loss_FM(x1, use_d=False)
         else:
             return self.loss_SM(x1)
+
+#======================================================================#
+# schedules
+#======================================================================#
 
 #======================================================================#
 #
