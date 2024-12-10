@@ -43,10 +43,17 @@ def main(dataset, device, args):
         lr = 1e-3
         weight_decay = 0e-0
         model = fastdiff.UNet(32)
+        nepochs = 100
     else:
+        # lr = 1e-4
+        # weight_decay = 1e-1
+        # model = fastdiff.UNet(32)
+        # nepochs = 100
+
         lr = 1e-4
         weight_decay = 1e-1
         model = fastdiff.UNet(32)
+        nepochs = 100
 
     ###
     # DIT
@@ -65,7 +72,10 @@ def main(dataset, device, args):
     # TRAIN
     #=================#
 
-    callback = fastdiff.Callback(out_dir, args.image_size, args.save_every, dataset.root,)
+    callback = fastdiff.Callback(
+        out_dir, args.image_size, args.save_every,
+        dataset.root, args.noise_seed,
+    )
 
     def callback_fn(trainer: mlutils.Trainer):
         if LOCAL_RANK == 0:
@@ -77,7 +87,7 @@ def main(dataset, device, args):
             return trainer.model(batch)
 
         kw = dict(
-            Opt='AdamW', lr=lr, nepochs=100, weight_decay=weight_decay,
+            Opt='AdamW', lr=lr, nepochs=nepochs, weight_decay=weight_decay,
             _batch_size=batch_size, static_graph=True, drop_last=True,
             batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
@@ -115,6 +125,7 @@ if __name__ == "__main__":
     parser.add_argument('--case_dir', default='test', help='case_dir', type=str)
     parser.add_argument('--mode', default=0, help='FM (0) or SM (1)', type=int)
     parser.add_argument('--save_every', default=10, help='epochs', type=int)
+    parser.add_argument('--noise_seed', default='out/noise.pt', type=str)
 
     args = parser.parse_args()
 

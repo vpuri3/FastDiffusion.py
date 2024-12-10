@@ -47,7 +47,7 @@ class Diffusion(nn.Module):
         return torch.randn_like(x)
     
     def cosine_schedule(self, t):
-        return np.cos((1 - t) * math.pi / 2)
+        return 1 - np.cos(t * math.pi / 2)
 
     def exponential_schedule(self,t,beta=1.0):
         return 1 - np.exp(-beta * t)

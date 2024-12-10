@@ -15,7 +15,15 @@ __all__ = [
 
 #======================================================================#
 class Callback:
-    def __init__(self, out_dir, image_size, save_every, data_root=None, fid=False):
+    def __init__(
+        self,
+        out_dir,
+        image_size,
+        save_every,
+        data_root=None,
+        noise_seed=None,
+        fid=False,
+    ):
 
         self.log_max_steps = 8
 
@@ -25,6 +33,7 @@ class Callback:
 
         self.fid = fid
         self.data_root = data_root
+        self.noise_seed = noise_seed
 
         return
 
@@ -38,6 +47,24 @@ class Callback:
         snapshot = torch.load(model_file, weights_only=False, map_location='cpu')
         trainer.model.load_state_dict(snapshot['model_state'])
         trainer.model.to(trainer.device)
+
+        return
+
+    def load_noise_seed(self, B):
+
+        assert self.noise_seed is not None
+
+        if not os.path.exists(self.noise_seed):
+            self.create_noise_seed()
+
+        x = torch.load(self.noise_seed, weights_only=True)
+
+        return x[:B]
+
+    def create_noise_seed(self):
+        shape = self.batch_shape(500)
+        x = torch.randn(shape)
+        torch.save(x, self.noise_seed)
 
         return
 
@@ -57,7 +84,7 @@ class Callback:
         schedule_type='default', **schedule_params,
     ):
         if x0 is None:
-            x0 = torch.randn(self.batch_shape(64), device=device)
+            x0 = self.load_noise_seed(64).to(device)
 
         if mode == 'collage':
             samples = []
@@ -72,10 +99,11 @@ class Callback:
                 nrow = int(math.sqrt(x0.size(0))) if nrow is None else nrow
                 grid_imgs = torchvision.utils.make_grid(x1)
                 grid_path = os.path.join(save_dir, f"sample.{str(N).zfill(4)}.png")
-                torchvision.utils.save_image(grid_imgs, grid_path, nrow=nrow)
-            elif mode == 'dir':
+                torchvision.utils.save_image(grid_imgs, grid_path, nrow=nrow, pad_value=1)
+            elif mode == 'fid':
                 B = x0.size(0)
-                out_dir = os.path.join(save_dir, f'{schedule_type}.{str(N).zfill(4)}')
+                NN = str(N).zfill(4)
+                out_dir = os.path.join(save_dir, f'fid.{NN}')
                 os.makedirs(out_dir, exist_ok=True)
 
                 for b in range(B):
@@ -89,7 +117,7 @@ class Callback:
             x1 = torch.cat(samples, dim=0)
             grid_imgs = torchvision.utils.make_grid(x1)
             grid_path = os.path.join(save_dir, f"{schedule_type}.png")
-            torchvision.utils.save_image(grid_imgs, grid_path, nrow=nrow)
+            torchvision.utils.save_image(grid_imgs, grid_path, nrow=nrow, pad_value=1.)
 
         return
 
@@ -124,18 +152,18 @@ class Callback:
         # After training is done
         #------------------------#
 
-        x0_grd = torch.randn(self.batch_shape( 64), device=device)
-        x0_dir = torch.randn(self.batch_shape(500), device=device)
-        x0_col = torch.randn(self.batch_shape(  1), device=device)
+        x0_grd = self.load_noise_seed( 64).to(device)
+        x0_dir = self.load_noise_seed(500).to(device)
+        x0_col = self.load_noise_seed(  1).to(device)
 
         for schedule_type in model.schedule_types:
-            print(f'sampling with {schedule_type}')
+            print(f'sampling with {schedule_type} schedule')
 
             schedule_dir = os.path.join(save_dir, schedule_type)
             os.makedirs(schedule_dir, exist_ok=True)
 
             self.save_samples(model, schedule_dir, device, x0=x0_grd, mode='grid'   , schedule_type=schedule_type)
-            self.save_samples(model, schedule_dir, device, x0=x0_dir, mode='dir'    , schedule_type=schedule_type)
+            self.save_samples(model, schedule_dir, device, x0=x0_dir, mode='fid'    , schedule_type=schedule_type)
             self.save_samples(model, schedule_dir, device, x0=x0_col, mode='collage', schedule_type=schedule_type)
 
         #------------------------#
@@ -150,7 +178,7 @@ class Callback:
                     for s in range(self.log_max_steps):
                         N = 2 ** s
                         NN = str(N).zfill(4)
-                        exp_dir = os.path.join(save_dir, schedule_type, f'{schedule_type}.{NN}')
+                        exp_dir = os.path.join(save_dir, schedule_type, f'fid.{NN}')
 
                         fid_score = self.compute_fid(exp_dir)
 
