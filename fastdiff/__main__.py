@@ -45,15 +45,15 @@ def main(dataset, device, args):
         model = fastdiff.UNet(32)
         nepochs = 100
     else:
-        lr = 1e-4
-        weight_decay = 1e-2
-        model = fastdiff.UNet(32)
-        nepochs = 200
-
         # lr = 1e-4
-        # weight_decay = 5e-2
+        # weight_decay = 1e-2
         # model = fastdiff.UNet(32)
-        # nepochs = 500
+        # nepochs = 200
+
+        lr = 1e-4
+        weight_decay = 5e-2
+        model = fastdiff.UNet(32)
+        nepochs = 500
 
     ###
     # DIT
