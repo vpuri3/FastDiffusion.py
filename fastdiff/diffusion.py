@@ -24,8 +24,8 @@ class Diffusion(nn.Module):
     schedule_types = [
         'default',
         'cosine',
-        'laplace',
-        'cauchy',
+        # 'laplace',
+        # 'cauchy',
         # 'cosine_shifted',
         # 'cosine_scaled',
         'exponential',
@@ -49,7 +49,7 @@ class Diffusion(nn.Module):
     def cosine_schedule(self, t):
         return 1 - np.cos(t * math.pi / 2)
 
-    def exponential_schedule(self,t,beta=1.0):
+    def exponential_schedule(self,t,beta=10.):
         return 1 - np.exp(-beta * t)
     
     def quadratic_schedule(self, t):
@@ -142,8 +142,12 @@ class Diffusion(nn.Module):
         vt_11 = self.model(xt + dd.view(-1,1,1,1) * vt_01, tt + dd, dd)
         v_avg = 0.5 * (vt_01 + vt_11)
 
+        # ignore infeasible situations
         mask = ((tt + dd) > 1.0) * ((tt + 2 * dd) > 1.0)
         mask = mask.view(-1,1,1,1)
+
+        vt_02 = vt_02 * mask
+        v_avg = v_avg * mask
 
         return self.lossfun(vt_02, v_avg.detach())
 

@@ -124,9 +124,14 @@ class Callback:
     @torch.no_grad()
     def __call__(self, trainer: mlutils.Trainer, final=False):
 
-        device = trainer.device
+        #------------------------#
+        if not final:
+            if (trainer.epoch % self.save_every) != 0:
+                return
+        #------------------------#
 
-        model = trainer.model
+        device = trainer.device
+        model  = trainer.model
         if isinstance(model, torch.nn.parallel.DistributedDataParallel):
             model = model.module
         model.eval()
@@ -140,9 +145,6 @@ class Callback:
         #------------------------#
 
         if not final:
-            if (trainer.epoch % self.save_every) == 0:
-                return
-
             trainer.save(os.path.join(save_dir, 'model.pt'))
             self.save_samples(model, save_dir, device, mode='grid')
 
