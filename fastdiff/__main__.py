@@ -34,10 +34,6 @@ def main(dataset, device, args):
     # MODEL
     #=================#
 
-    ###
-    # UNET (batch_size = 16 * 3)
-    ###
-
     batch_size = 12
     if args.mode == 0:
         lr = 1e-3
@@ -45,11 +41,6 @@ def main(dataset, device, args):
         model = fastdiff.UNet(32)
         nepochs = 100
     else:
-        # lr = 1e-4
-        # weight_decay = 1e-2
-        # model = fastdiff.UNet(32)
-        # nepochs = 200
-
         lr = 1e-4
         weight_decay = 5e-2
         model = fastdiff.UNet(32)
@@ -65,7 +56,7 @@ def main(dataset, device, args):
     # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
 
     #=================#
-    model = fastdiff.Diffusion(model, args.mode)
+    model = fastdiff.Diffusion(model, args.mode, args.log_max_steps)
     #=================#
 
     #=================#
@@ -73,7 +64,7 @@ def main(dataset, device, args):
     #=================#
 
     callback = fastdiff.Callback(
-        out_dir, args.image_size, args.save_every,
+        out_dir, args.image_size, args.epochs // 10,
         dataset.root, args.noise_seed,
     )
 
@@ -87,7 +78,7 @@ def main(dataset, device, args):
             return trainer.model(batch)
 
         kw = dict(
-            Opt='AdamW', lr=lr, nepochs=nepochs, weight_decay=weight_decay,
+            Opt='AdamW', lr=lr, nepochs=args.epochs, weight_decay=weight_decay,
             _batch_size=batch_size, static_graph=True, drop_last=True,
             batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
@@ -100,11 +91,10 @@ def main(dataset, device, args):
     # final evaluation
     #=================#
 
-    if LOCAL_RANK == 0:
-        trainer = mlutils.Trainer(model, dataset, device=device)
-        callback.load(trainer)
-        callback.fid = True
-        callback(trainer, final=True)
+    trainer = mlutils.Trainer(model, dataset, device=device)
+    callback.load(trainer)
+    callback.fid = True
+    callback(trainer, final=True)
 
     return
 
@@ -121,10 +111,14 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', default='AFHQ', help='dataset', type=str)
     parser.add_argument('--data_class', default='cat', help='data class', type=str)
     parser.add_argument('--image_size', default=64, help='dataset', type=int)
-    parser.add_argument('--train', action="store_true", help='train or eval')
+
     parser.add_argument('--case_dir', default='test', help='case_dir', type=str)
     parser.add_argument('--mode', default=0, help='FM (0) or SM (1)', type=int)
-    parser.add_argument('--save_every', default=10, help='epochs', type=int)
+
+    parser.add_argument('--train', action="store_true", help='train or eval')
+    parser.add_argument('--epochs', default=100, help='epochs', type=int)
+
+    parser.add_argument('--log_max_steps', default=6, type=int)
     parser.add_argument('--noise_seed', default='out/noise.pt', type=str)
 
     args = parser.parse_args()
