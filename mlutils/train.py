@@ -227,7 +227,8 @@ class Trainer:
 
     def load(self, load_path: str):
         print(f"Loading {load_path}")
-        snapshot = torch.load(load_path, weights_only=True)
+        # snapshot = torch.load(load_path, weights_only=True)
+        snapshot = torch.load(load_path, weights_only=False)
 
         self.opt = snapshot['opt']
         self.epoch = snapshot['epoch']
