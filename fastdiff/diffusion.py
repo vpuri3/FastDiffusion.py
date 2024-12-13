@@ -17,8 +17,11 @@ class Diffusion(nn.Module):
     '''
     model: velocity v(x(t), t)
     x0: noise ~N(0, I)
-    x1: sample ~ data distribution
-    N: number of steps
+    x1: sample ~ Data
+
+    N : number of steps
+    t : time [0 -> 1]
+    d : step size = 1 / N
 
     Flow Matching formulation
 
@@ -32,29 +35,25 @@ class Diffusion(nn.Module):
     xt = cos(t pi/2) x0 + sin(t pi/2) x1
     vt = pi/2 cos(t pi/2) x1 -  pi/2 sin(t pi/2)
 
+    In general
+
+    xt = a(t)  x0 + b(t)  x1
+    vt = a'(t) x0 + b'(t) x1
+
     '''
 
-    schedule_types = [
-        'default',
-        'cosine',
-        # 'laplace',
-        # 'cauchy',
-        # 'cosine_shifted',
-        # 'cosine_scaled',
-        'exponential',
-        'quadratic'
-    ]
-
-    def __init__(self, model, mode: int, log_max_steps=6):
+    def __init__(self, model, mode: int, trig: bool, log_max_steps=6):
         super().__init__()
 
         msg = "mode must be 0 for Flow Matching (FM) or 1 Shortcut Model (SM)"
         assert (mode == 0) or (mode == 1), msg
 
-        self.mode = mode
         self.model = model
-        self.lossfun = nn.MSELoss()
+        self.mode = mode
+        self.schedule = TrigSchedule() if trig else LinearSchedule()
+
         self.log_max_steps = log_max_steps # 2 ** N
+        self.lossfun = nn.MSELoss()
 
     #==================================#
     # noise generator
@@ -71,21 +70,20 @@ class Diffusion(nn.Module):
     #==================================#
     
     @torch.no_grad()
-    def sample(self, x0, N, schedule_type='default', **schedule_params):
+    def sample(self, x0, N):
         xt = x0
         d  = 1 / N
-        dd = torch.full((x0.size(0),), d, device=x0.device) if self.mode == 1 else None
+        dd = torch.full((x0.size(0),), d, device=x0.device)
 
         for t in range(N):
             t  = t / N
-            t  = apply_schedule(t, schedule_type, **schedule_params)
             tt = torch.full((x0.size(0),), t, device=x0.device)
-            vt = self.query_model(xt, tt, dd)
-            xt = xt + d * vt
+            vt = self.velocity(xt, tt, dd)
+            xt = self.schedule.next(xt, vt, tt, dd)
 
         return xt
 
-    def query_model(self, xt, t, d=None):
+    def velocity(self, xt, t, d=None):
         if self.mode == 0:  # Flow Matching
             return self.model(xt, t)
         else:               # Shortcut Model
@@ -100,10 +98,11 @@ class Diffusion(nn.Module):
         tt = torch.rand(B, device=device)
         dd = 1 / (2 ** torch.randint(self.log_max_steps, (B,), device=device))
 
-        xt = x1 * tt.view(-1,1,1,1) + (1 - tt).view(-1,1,1,1) * x0
+        aa, bb = self.schedule(tt)
+        xt = x0 * aa.view(-1,1,1,1) + x1 * bb.view(-1,1,1,1)
 
         return x0, xt, tt, dd
-    
+
     #==================================#
     # losses
     #==================================#
@@ -121,30 +120,31 @@ class Diffusion(nn.Module):
     def loss_CS(self, x1):
         # consistency loss
 
-        x0, xt, tt, dd = self._train_sample(x1)
+        _, xt, tt, dd = self._train_sample(x1)
 
-        # vt_XY: v(t + X * d, Y * d)
-
-        vt_01 = self.model(xt, tt, dd)
-        vt_02 = self.model(xt, tt, dd * 2)
-        vt_11 = self.model(xt + dd.view(-1,1,1,1) * vt_01, tt + dd, dd)
-        v_avg = 0.5 * (vt_01 + vt_11)
+        # big step 1
+        xB = self.schedule.next(xt, self.velocity(xt, tt, dd*2), tt, dd*2)
+        # small step 1, 2
+        xS = self.schedule.next(xt, self.velocity(xt, tt   , dd), tt   , dd)
+        xS = self.schedule.next(xS, self.velocity(xS, tt+dd, dd), tt+dd, dd)
 
         # ignore infeasible situations
-        mask = ((tt + dd) > 1.0) * ((tt + 2 * dd) > 1.0)
+        mask = ((tt + dd) <= 1.0) * ((tt + 2 * dd) <= 1.0)
         mask = mask.view(-1,1,1,1)
 
-        vt_02 = vt_02 * mask
-        v_avg = v_avg * mask
+        xB = xB * mask
+        xS = xS * mask
 
-        return self.lossfun(vt_02, v_avg.detach())
+        return self.lossfun(xB, xS.detach()) # teach big to follow small
 
     def loss_FM(self, x1):
         x0, xt, tt, dd = self._train_sample(x1)
-        vt = self.query_model(xt, tt, dd)
-        target_velocity = x1 - x0
+        vt = self.velocity(xt, tt, dd * 0) # FM doesn't use d and SM sets it to 0
 
-        return self.lossfun(vt, target_velocity)
+        da, db = self.schedule.derv(tt)
+        target = x0 * da.view(-1,1,1,1) + x1 * db.view(-1,1,1,1)
+
+        return self.lossfun(vt, target)
 
     #==================================#
 
@@ -158,46 +158,30 @@ class Diffusion(nn.Module):
 #======================================================================#
 # Schedules
 #======================================================================#
-def cosine_schedule(t):
-    return 1 - np.cos(t * math.pi / 2)
+class LinearSchedule:
+    def __call__(self, t: torch.Tensor):
+        return (1 - t), t
 
-def exponential_schedule(t, beta=10.):
-    return 1 - np.exp(-beta * t)
+    def derv(self, t: torch.Tensor):
+        o = torch.ones_like(t)
+        return -o, o
 
-def quadratic_schedule(t):
-    return t**2
+    def next(self, xt, vt, t, d):
+        d = d.view(-1,1,1,1)
+        return xt + d * vt
 
-def laplace_schedule(t, mu=0, b=0.5):
-    # return mu - b * np.sign(0.5 - t) * np.log(1 - 2 * np.abs(t - 0.5))
-    return mu - b * np.sign(0.5 - t) * np.log(np.maximum(1 - 2 * np.abs(t - 0.5), 1e-6))
+class TrigSchedule:
+    m = math.pi / 2
 
-def cauchy_schedule(t, mu=0, gamma=1):
-    return mu + gamma * np.tan(math.pi / 2 * (1 - 2 * t))
+    def __call__(self, t: torch.Tensor):
+        return torch.cos(self.m * t), torch.sin(self.m * t)
 
-def cosine_shifted_schedule(t, mu=0):
-    return mu + 2 * np.log(np.tan(math.pi * t / 2))
+    def derv(self, t: torch.Tensor):
+        return -self.m * torch.sin(self.m * t), self.m * torch.cos(self.m * t)
 
-def cosine_scaled_schedule(t, s=1):
-    return 2 / s * np.log(np.tan(math.pi * t / 2))
-
-def apply_schedule(t, schedule_type='default', **schedule_params):
-    if schedule_type == 'default':
-        return t
-    elif schedule_type == 'cosine':
-        return cosine_schedule(t)
-    elif schedule_type == 'laplace':
-        return laplace_schedule(t, **schedule_params)
-    elif schedule_type == 'cauchy':
-        return cauchy_schedule(t, **schedule_params)
-    elif schedule_type == 'cosine_shifted':
-        return cosine_shifted_schedule(t, **schedule_params)
-    elif schedule_type == 'cosine_scaled':
-        return cosine_scaled_schedule(t, **schedule_params)
-    elif schedule_type == 'exponential':
-        return exponential_schedule(t)
-    elif schedule_type == 'quadratic':
-        return quadratic_schedule(t)
-
+    def next(self, xt, vt, t, d):
+        d = d.view(-1,1,1,1)
+        return xt * torch.cos(self.m * d) + vt * torch.sin(self.m * d) / self.m
 
 #======================================================================#
 #

@@ -35,16 +35,15 @@ def main(dataset, device, args):
     #=================#
 
     batch_size = 12
+    # batch_size = 16
     if args.mode == 0:
         lr = 1e-3
         weight_decay = 0e-0
         model = fastdiff.UNet(32)
-        nepochs = 100
     else:
         lr = 1e-4
         weight_decay = 5e-2
         model = fastdiff.UNet(32)
-        nepochs = 500
 
     ###
     # DIT
@@ -56,7 +55,7 @@ def main(dataset, device, args):
     # model = fastdiff.DiT_S_2(input_size=args.image_size, in_channels=3,)
 
     #=================#
-    model = fastdiff.Diffusion(model, args.mode, args.log_max_steps)
+    model = fastdiff.Diffusion(model, args.mode, args.trig, args.log_max_steps)
     #=================#
 
     #=================#
@@ -68,11 +67,6 @@ def main(dataset, device, args):
         dataset.root, args.noise_seed,
     )
 
-    def callback_fn(trainer: mlutils.Trainer):
-        if LOCAL_RANK == 0:
-            callback(trainer)
-        return
-
     if args.train:
         def batch_lossfun(batch, trainer: mlutils.Trainer):
             return trainer.model(batch)
@@ -83,8 +77,15 @@ def main(dataset, device, args):
             batch_lossfun=batch_lossfun, device=device, stats_every=-1,
         )
 
+        def callback_fn(trainer: mlutils.Trainer):
+            if LOCAL_RANK == 0:
+                callback(trainer)
+            return
+
         trainer = mlutils.Trainer(model, dataset, **kw)
         trainer.add_callback('epoch_end', callback_fn)
+
+        callback.load(trainer)
         trainer.train()
 
     #=================#
@@ -114,6 +115,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--case_dir', default='test', help='case_dir', type=str)
     parser.add_argument('--mode', default=0, help='FM (0) or SM (1)', type=int)
+    parser.add_argument('--trig', action="store_true", help='Trig or Linear')
 
     parser.add_argument('--train', action="store_true", help='train or eval')
     parser.add_argument('--epochs', default=100, help='epochs', type=int)

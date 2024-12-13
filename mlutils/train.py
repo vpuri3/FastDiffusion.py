@@ -215,23 +215,26 @@ class Trainer:
             return
 
         snapshot = dict()
+        snapshot['opt'] = self.opt
         snapshot['epoch'] = self.epoch
         if self.DDP:
             snapshot['model_state'] = self.model.module.state_dict()
         else:
             snapshot['model_state'] = self.model.state_dict()
-        snapshot['opt'] = self.opt
         torch.save(snapshot, save_path)
 
         return
 
     def load(self, load_path: str):
         print(f"Loading {load_path}")
-        snapshot = torch.load(load_path)
+        snapshot = torch.load(load_path, weights_only=True)
 
-        self.epoch = snapshot['epoch']
-        self.model.load_state_dict(snapshot['model_state'])
         self.opt = snapshot['opt']
+        self.epoch = snapshot['epoch']
+        if self.DDP:
+            self.model.module.load_state_dict(snapshot['model_state'])
+        else:
+            self.model.load_state_dict(snapshot['model_state'])
 
     def make_dataloader(self):
         if self.GNN:

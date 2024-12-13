@@ -37,13 +37,14 @@ class Callback:
 
     def load(self, trainer):
         sample_dirs = [dir for dir in os.listdir(self.out_dir) if dir.startswith('sample')]
+        if len(sample_dirs) == 0:
+            if trainer.LOCAL_RANK == 0:
+                print('No checkpoint found. starting from scrach.')
+            return
         load_dir = sorted(sample_dirs)[-1]
         model_file = os.path.join(self.out_dir, load_dir, 'model.pt')
 
-        print("loading model from", model_file)
-
-        snapshot = torch.load(model_file, weights_only=False, map_location='cpu')
-        trainer.model.load_state_dict(snapshot['model_state'])
+        trainer.load(model_file)
         trainer.model.to(trainer.device)
 
         return
@@ -67,11 +68,12 @@ class Callback:
         return
 
     def get_save_dir(self, trainer, final=False):
-        if not final:
-            nsave = trainer.epoch // self.save_every
-            save_dir = os.path.join(self.out_dir, f'sample{str(nsave).zfill(2)}')
-        else:
+        if final:
             save_dir = os.path.join(self.out_dir, f'final')
+        else:
+            sample_dirs = [dir for dir in os.listdir(self.out_dir) if dir.startswith('sample')]
+            nsave = len(sample_dirs) + 1
+            save_dir = os.path.join(self.out_dir, f'sample{str(nsave).zfill(2)}')
         return save_dir
 
     def batch_shape(self, B: int):
@@ -79,7 +81,6 @@ class Callback:
 
     def save_samples(
         self, model, save_dir, device, x0=None, mode='grid', nrow=None, pfx=None,
-        schedule_type='default', **schedule_params,
     ):
         if x0 is None:
             x0 = self.load_noise_seed(64).to(device)
@@ -95,7 +96,7 @@ class Callback:
         for s in range(model.log_max_steps):
             N  = 2 ** s
             NN = str(N).zfill(4)
-            x1 = model.sample(x0, N, schedule_type, **schedule_params) * 0.5 + 0.5
+            x1 = model.sample(x0, N) * 0.5 + 0.5
 
             if mode == 'grid':
                 nrow = int(math.sqrt(x0.size(0))) if nrow is None else nrow
@@ -164,16 +165,10 @@ class Callback:
         x0_co0 = self.load_noise_seed(  1).to(device)
         x0_co1 = self.load_noise_seed(  2).to(device)[-1].unsqueeze(0)
 
-        for schedule_type in model.schedule_types:
-            print(f'sampling with {schedule_type} schedule')
-
-            schedule_dir = os.path.join(save_dir, schedule_type)
-            os.makedirs(schedule_dir, exist_ok=True)
-
-            self.save_samples(model, schedule_dir, device, x0=x0_grd, mode='grid'   , schedule_type=schedule_type)
-            self.save_samples(model, schedule_dir, device, x0=x0_dir, mode='fid'    , schedule_type=schedule_type)
-            self.save_samples(model, schedule_dir, device, x0=x0_co0, mode='collage', schedule_type=schedule_type, pfx='co0')
-            self.save_samples(model, schedule_dir, device, x0=x0_co1, mode='collage', schedule_type=schedule_type, pfx='co1')
+        self.save_samples(model, save_dir, device, x0=x0_grd, mode='grid')
+        self.save_samples(model, save_dir, device, x0=x0_dir, mode='fid' )
+        self.save_samples(model, save_dir, device, x0=x0_co0, mode='collage', pfx='co0')
+        self.save_samples(model, save_dir, device, x0=x0_co1, mode='collage', pfx='co1')
 
         #------------------------#
         # fid scores
@@ -183,16 +178,15 @@ class Callback:
             fid_file = os.path.join(save_dir, 'fid.txt')
 
             with open(fid_file, 'w') as file:
-                for schedule_type in model.schedule_types:
-                    for s in range(model.log_max_steps):
-                        N = 2 ** s
-                        NN = str(N).zfill(4)
-                        exp_dir = os.path.join(save_dir, schedule_type, f'fid.{NN}')
+                for s in range(model.log_max_steps):
+                    N = 2 ** s
+                    NN = str(N).zfill(4)
+                    exp_dir = os.path.join(save_dir, f'fid.{NN}')
 
-                        fid_score = self.compute_fid(exp_dir)
+                    fid_score = self.compute_fid(exp_dir)
 
-                        print(f'FID score of {exp_dir}: {fid_score}')
-                        file.write(f'{schedule_type}\t{NN}\t{fid_score}\n')
+                    print(f'FID score of {exp_dir}: {fid_score}')
+                    file.write(f'{NN}\t{fid_score}\n')
 
         return
 
