@@ -118,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument('--trig', action="store_true", help='Trig or Linear')
 
     parser.add_argument('--train', action="store_true", help='train or eval')
-    parser.add_argument('--epochs', default=100, help='epochs', type=int)
+    parser.add_argument('--epochs', default=500, help='epochs', type=int)
 
     parser.add_argument('--log_max_steps', default=6, type=int)
     parser.add_argument('--noise_seed', default='out/noise.pt', type=str)

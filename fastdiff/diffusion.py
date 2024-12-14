@@ -77,15 +77,27 @@ class Diffusion(nn.Module):
         device = x1.device
 
         x0 = self.noise_like(x1)
+
         if from_grid:
+            # [1, 2, 3, 4, 5]
+            log_num_steps = torch.randint(1, self.log_max_steps, (B,), device=device)
+            num_steps = 2 ** log_num_steps # [2, 4, 8, 16, 32]
+            dd = 1 / (2 ** log_num_steps)
+
+            # time
             N = 2 ** self.log_max_steps
             tt = torch.randint(N, (B,), device=device) / N
-            # dd = 1 / (2 ** torch.randint(self.log_max_steps - 1, (B,), device=device))
+
+            # choose t such that t+2d <= 1
+            # N=2 -> t=0/2 (1/2, 2/2 infeasible)
+            # N=4 -> t=0/4, 1/4, 2/4 (3/4, 4/4 infeasible)
+
+            # # jugaadu
+            # tt = torch.rand(B, device=device) * (1 - 2 * dd)
+
         else:
             tt = torch.rand(B, device=device)
-            # dd = torch.rand(B, device=device)
-
-        dd = 1 / (2 ** torch.randint(self.log_max_steps - 1, (B,), device=device))
+            dd = torch.rand(B, device=device)
 
         aa, bb = self.schedule(tt)
         xt = x0 * aa.view(-1,1,1,1) + x1 * bb.view(-1,1,1,1)
@@ -129,7 +141,7 @@ class Diffusion(nn.Module):
     def loss_CS(self, x1):
         # consistency loss
 
-        _, xt, tt, dd = self._train_sample(x1)
+        _, xt, tt, dd = self._train_sample(x1, from_grid=True)
 
         # big step 1
         xB = self.schedule.next(xt, self.velocity(xt, tt, dd*2), tt, dd*2)
@@ -138,8 +150,9 @@ class Diffusion(nn.Module):
         xS = self.schedule.next(xS, self.velocity(xS, tt+dd, dd), tt+dd, dd)
 
         # ignore infeasible situations
-        mask = ((tt + dd) <= 1.0) * ((tt + 2 * dd) <= 1.0)
-        mask = mask.view(-1,1,1,1)
+        cond1 = (tt + dd) <= 1.0
+        cond2 = (tt + 2 * dd) <= 1.0
+        mask = torch.logical_or(cond1, cond2).view(-1,1,1,1)
 
         xB = xB * mask
         xS = xS * mask
