@@ -56,7 +56,7 @@ class Diffusion(nn.Module):
         self.lossfun = nn.MSELoss()
 
     #==================================#
-    # noise generator
+    # utilities
     #==================================#
 
     def noise(self, *shape, device=None):
@@ -64,6 +64,33 @@ class Diffusion(nn.Module):
 
     def noise_like(self, x):
         return torch.randn_like(x)
+
+    def velocity(self, xt, t, d=None):
+        if self.mode == 0:  # Flow Matching
+            return self.model(xt, t)
+        else:               # Shortcut Model
+            assert d is not None
+            return self.model(xt, t, d)
+
+    def _train_sample(self, x1, from_grid=False):
+        B = x1.size(0)
+        device = x1.device
+
+        x0 = self.noise_like(x1)
+        if from_grid:
+            N = 2 ** self.log_max_steps
+            tt = torch.randint(N, (B,), device=device) / N
+            # dd = 1 / (2 ** torch.randint(self.log_max_steps - 1, (B,), device=device))
+        else:
+            tt = torch.rand(B, device=device)
+            # dd = torch.rand(B, device=device)
+
+        dd = 1 / (2 ** torch.randint(self.log_max_steps - 1, (B,), device=device))
+
+        aa, bb = self.schedule(tt)
+        xt = x0 * aa.view(-1,1,1,1) + x1 * bb.view(-1,1,1,1)
+
+        return x0, xt, tt, dd
 
     #==================================#
     # sampler
@@ -83,39 +110,21 @@ class Diffusion(nn.Module):
 
         return xt
 
-    def velocity(self, xt, t, d=None):
-        if self.mode == 0:  # Flow Matching
-            return self.model(xt, t)
-        else:               # Shortcut Model
-            assert d is not None
-            return self.model(xt, t, d)
-
-    def _train_sample(self, x1):
-        B = x1.size(0)
-        device = x1.device
-
-        x0 = self.noise_like(x1)
-        tt = torch.rand(B, device=device)
-        dd = 1 / (2 ** torch.randint(self.log_max_steps, (B,), device=device))
-
-        aa, bb = self.schedule(tt)
-        xt = x0 * aa.view(-1,1,1,1) + x1 * bb.view(-1,1,1,1)
-
-        return x0, xt, tt, dd
-
     #==================================#
     # losses
     #==================================#
 
     def loss_SM(self, x1):
-        B = x1.size(0) // 4
+        N = x1.size(0)
+        B = N // 4
+        r = B / N
 
         x1_FM, x1_CS = x1[:B], x1[B:]
 
         loss_FM = self.loss_FM(x1_FM)
         loss_CS = self.loss_CS(x1_CS)
 
-        return loss_FM + loss_CS
+        return loss_FM * r + loss_CS * (1 - r)
 
     def loss_CS(self, x1):
         # consistency loss
