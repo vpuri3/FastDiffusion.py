@@ -79,21 +79,14 @@ class Diffusion(nn.Module):
         x0 = self.noise_like(x1)
 
         if from_grid:
-            # [1, 2, 3, 4, 5]
-            log_num_steps = torch.randint(1, self.log_max_steps, (B,), device=device)
-            num_steps = 2 ** log_num_steps # [2, 4, 8, 16, 32]
-            dd = 1 / (2 ** log_num_steps)
+            # [2, 4, 8, 16, 32]
+            num_steps = 2 ** torch.randint(1, self.log_max_steps, (B,), device=device)
 
-            # time
-            N = 2 ** self.log_max_steps
-            tt = torch.randint(N, (B,), device=device) / N
+            # step size
+            dd = 1 / num_steps
 
-            # choose t such that t+2d <= 1
-            # N=2 -> t=0/2 (1/2, 2/2 infeasible)
-            # N=4 -> t=0/4, 1/4, 2/4 (3/4, 4/4 infeasible)
-
-            # # jugaadu
-            # tt = torch.rand(B, device=device) * (1 - 2 * dd)
+            # time - ensure t+2d <= 1
+            tt = torch.rand(B, device=device) * (1 - 2 * dd)
 
         else:
             tt = torch.rand(B, device=device)
@@ -148,14 +141,6 @@ class Diffusion(nn.Module):
         # small step 1, 2
         xS = self.schedule.next(xt, self.velocity(xt, tt   , dd), tt   , dd)
         xS = self.schedule.next(xS, self.velocity(xS, tt+dd, dd), tt+dd, dd)
-
-        # ignore infeasible situations
-        cond1 = (tt + dd) <= 1.0
-        cond2 = (tt + 2 * dd) <= 1.0
-        mask = torch.logical_or(cond1, cond2).view(-1,1,1,1)
-
-        xB = xB * mask
-        xS = xS * mask
 
         return self.lossfun(xB, xS.detach()) # teach big to follow small
 
