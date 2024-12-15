@@ -36,7 +36,7 @@ $ torchrun --nproc-per-gpu gpu -m fastdiff [ARGS]
 ```
 
 ## Acknowledgments
-This was a course project for CMU 10-623 Generative AI course with teammates Nihali Shetty and Nikhitha Beedala during the Fall 2024 semester.
+This was a course project for CMU 10-623 Generative AI course with teammates [Nihali Shetty](https://github.com/NihaliShetty) and [Nikhitha Beedala](https://github.com/binks07) during the Fall 2024 semester.
 
 ## Citation
 
