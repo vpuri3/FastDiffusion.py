@@ -11,13 +11,13 @@ Specifically, our key contributions are
 - Development of a training objective and first-order sampler for trig flow
 - Development of a training objective for trig flow for shortcut models
 
+Our preliminary results are detailed in a [technical report](reporting/report.pdf) and summarized in a [poster](reporting/poster.pdf) rendered below.
+
+![image](https://github.com/user-attachments/assets/fe897324-2cf4-485c-a23e-78d3f437d065)
+
 [1] Liu X et al. ICLR. 2023.
 
 [2] Lu C et al. arXiv:2410.1108. 2024.
-
-## Results
-
-[technical report](reporting/report.pdf)
 
 ## How to run
 
