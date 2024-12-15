@@ -39,7 +39,6 @@ class Diffusion(nn.Module):
 
     xt = a(t)  x0 + b(t)  x1
     vt = a'(t) x0 + b'(t) x1
-
     '''
 
     def __init__(self, model, mode: int, trig: bool, log_max_steps=6):
@@ -119,20 +118,19 @@ class Diffusion(nn.Module):
     # losses
     #==================================#
 
-    def loss_SM(self, x1):
+    def loss_shortcut(self, x1):
         N = x1.size(0)
         B = N // 4
         r = B / N
 
         x1_FM, x1_CS = x1[:B], x1[B:]
 
-        loss_FM = self.loss_FM(x1_FM)
-        loss_CS = self.loss_CS(x1_CS)
+        loss_flow = self.loss_flow(x1_FM)
+        loss_consistency = self.loss_consistency(x1_CS)
 
-        return loss_FM * r + loss_CS * (1 - r)
+        return loss_flow * r + loss_consistency * (1 - r)
 
-    def loss_CS(self, x1):
-        # consistency loss
+    def loss_consistency(self, x1):
 
         _, xt, tt, dd = self._train_sample(x1, from_grid=True)
 
@@ -144,7 +142,7 @@ class Diffusion(nn.Module):
 
         return self.lossfun(xB, xS.detach()) # teach big to follow small
 
-    def loss_FM(self, x1):
+    def loss_flow(self, x1):
         x0, xt, tt, dd = self._train_sample(x1)
         vt = self.velocity(xt, tt, dd * 0) # FM doesn't use d and SM sets it to 0
 
@@ -157,14 +155,15 @@ class Diffusion(nn.Module):
 
     def forward(self, x1):
         if self.mode == 0:
-            return self.loss_FM(x1)
+            return self.loss_flow(x1)
         else:
-            return self.loss_SM(x1)
+            return self.loss_shortcut(x1)
 #
 
 #======================================================================#
 # Schedules
 #======================================================================#
+
 class LinearSchedule:
     def __call__(self, t: torch.Tensor):
         return (1 - t), t
